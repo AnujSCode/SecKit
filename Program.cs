@@ -44,6 +44,21 @@ public class Program
             AnsiConsole.MarkupLine($"[grey]Profile: {_config.ActiveProfile} | Threads: {_config.Threads} | Timeout: {_config.TimeoutSeconds}s[/]");
             AnsiConsole.WriteLine();
 
+            // Authorization gate — active scanning without permission may be illegal.
+            AnsiConsole.Write(new Panel(
+                "[yellow]SecKit performs active security testing that sends real attack traffic.[/]\n" +
+                "Only scan systems you [bold]own[/] or have [bold]explicit written permission[/] to test.\n" +
+                "Unauthorized scanning may violate the CFAA, the UK Computer Misuse Act, and similar laws.")
+                .Header("[red] LEGAL NOTICE [/]")
+                .BorderColor(Color.Red));
+
+            if (!AnsiConsole.Confirm("[red]I confirm I am authorized to test the targets I will enter. Continue?[/]", false))
+            {
+                AnsiConsole.MarkupLine("[grey]Aborted.[/]");
+                return 0;
+            }
+            AnsiConsole.WriteLine();
+
             while (true)
             {
                 var choice = AnsiConsole.Prompt(
@@ -118,6 +133,7 @@ public class Program
             var targetUrl = "";
             var scanType = "full";
             var outputPath = _config.OutputDirectory;
+            var authorized = false;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -135,12 +151,22 @@ public class Program
                     case "--profile" when i + 1 < args.Length:
                         _config.ActiveProfile = args[++i];
                         break;
+                    case "--i-am-authorized":
+                        authorized = true;
+                        break;
                 }
             }
 
             if (string.IsNullOrWhiteSpace(targetUrl))
             {
-                Console.Error.WriteLine("Usage: seckit --scan <url> --type <full|vuln|network|ai|map> [--output <path>] [--profile <light|medium|deep>]");
+                Console.Error.WriteLine("Usage: seckit --scan <url> --type <full|vuln|network|ai|map> [--output <path>] [--profile <light|medium|deep>] --i-am-authorized");
+                return 1;
+            }
+
+            if (!authorized)
+            {
+                Console.Error.WriteLine("Refusing to scan: pass --i-am-authorized to confirm you have explicit permission to test this target.");
+                Console.Error.WriteLine("Unauthorized scanning may be illegal (CFAA, UK Computer Misuse Act, etc.).");
                 return 1;
             }
 
