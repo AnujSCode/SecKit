@@ -1,0 +1,35 @@
+# Build artifacts
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+
+# Reports and logs
+reports/
+logs/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.idea/
+*.sln.DotSettings.user
+
+# Environment
+.env
+*.env.local
+
+# Build output
+publish/
+out/

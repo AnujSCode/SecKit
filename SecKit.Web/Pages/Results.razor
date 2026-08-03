@@ -1,0 +1,346 @@
+@page "/results"
+@page "/results/{JobId}"
+@inject ScanService ScanService
+@implements IDisposable
+
+<PageTitle>SecKit — Scan Results</PageTitle>
+
+<h1>&#x1F4C4; Scan Results</h1>
+
+@if (string.IsNullOrEmpty(JobId))
+{
+    <!-- List view: show all history -->
+    @if (_allHistory.Any())
+    {
+        <!-- Filters -->
+        <div class="panel" style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin-bottom:0; min-width:200px;">
+                <label class="form-label">Filter by Severity</label>
+                <select class="form-select" @bind="_severityFilter">
+                    <option value="">All Severities</option>
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                    <option value="Info">Info</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0; min-width:200px;">
+                <label class="form-label">Filter by Module</label>
+                <select class="form-select" @bind="_moduleFilter">
+                    <option value="">All Modules</option>
+                    @foreach (var mod in _allModules)
+                    {
+                        <option value="@mod">@mod</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Search URL</label>
+                <input class="form-input" @bind="_urlFilter" placeholder="Filter by URL..." style="min-width:250px;" />
+            </div>
+        </div>
+
+        @if (!_filteredHistory.Any())
+        {
+            <div class="panel text-center" style="padding: 2rem;">
+                <p class="text-muted">No results match the current filters.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Target</th>
+                            <th>Type</th>
+                            <th>Duration</th>
+                            <th>Crit</th>
+                            <th>High</th>
+                            <th>Med</th>
+                            <th>Low</th>
+                            <th>Info</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _filteredHistory)
+                        {
+                            <tr>
+                                <td>@item.ScanStartTime.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td class="text-mono" style="max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@item.TargetUrl</td>
+                                <td>@item.ScanType</td>
+                                <td>@item.Duration.ToString(@"m\m\ s\s")</td>
+                                <td>
+                                    @if (item.CriticalCount > 0) { <span class="badge badge-critical">@item.CriticalCount</span> }
+                                    else { <span class="text-muted">0</span> }
+                                </td>
+                                <td>
+                                    @if (item.HighCount > 0) { <span class="badge badge-high">@item.HighCount</span> }
+                                    else { <span class="text-muted">0</span> }
+                                </td>
+                                <td>
+                                    @if (item.MediumCount > 0) { <span class="badge badge-medium">@item.MediumCount</span> }
+                                    else { <span class="text-muted">0</span> }
+                                </td>
+                                <td>
+                                    @if (item.LowCount > 0) { <span class="badge badge-low">@item.LowCount</span> }
+                                    else { <span class="text-muted">0</span> }
+                                </td>
+                                <td>@item.InfoCount</td>
+                                <td>
+                                    <a href="/results/@item.JobId" class="btn btn-secondary btn-sm">View</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="panel text-center" style="padding: 3rem;">
+            <p class="text-muted">No scan results available. Run a scan first!</p>
+            <a href="/scan" class="btn btn-primary" style="margin-top: 1rem;">&#x1F50D; Run New Scan</a>
+        </div>
+    }
+}
+else
+{
+    <!-- Detail view: single scan result -->
+    @if (_selectedScan == null)
+    {
+        <div class="panel text-center" style="padding: 3rem;">
+            <p class="text-muted">Scan not found: @JobId</p>
+            <a href="/results" class="btn btn-secondary" style="margin-top: 1rem;">Back to Results</a>
+        </div>
+    }
+    else
+    {
+        <a href="/results" class="btn btn-secondary" style="margin-bottom: 1rem;">&larr; Back to Results</a>
+
+        <div class="panel">
+            <div class="panel-header">
+                <div>
+                    <h3>&#x1F50D; @_selectedScan.TargetUrl</h3>
+                    <span class="text-muted">
+                        @_selectedScan.ScanType (@_selectedScan.Profile) &mdash;
+                        @_selectedScan.ScanStartTime.ToString("yyyy-MM-dd HH:mm") UTC &mdash;
+                        Duration: @_selectedScan.Duration.ToString(@"m\m\ s\s")
+                    </span>
+                </div>
+                @if (!string.IsNullOrEmpty(_selectedScan.ReportPath))
+                {
+                    <a href="file://@_selectedScan.ReportPath" class="btn btn-secondary btn-sm" target="_blank">
+                        &#x1F4C4; Open Report
+                    </a>
+                }
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="card-grid">
+            <div class="stat-card critical">
+                <div class="stat-value">@_selectedScan.CriticalCount</div>
+                <div class="stat-label">Critical</div>
+            </div>
+            <div class="stat-card high">
+                <div class="stat-value">@_selectedScan.HighCount</div>
+                <div class="stat-label">High</div>
+            </div>
+            <div class="stat-card medium">
+                <div class="stat-value">@_selectedScan.MediumCount</div>
+                <div class="stat-label">Medium</div>
+            </div>
+            <div class="stat-card low">
+                <div class="stat-value">@_selectedScan.LowCount</div>
+                <div class="stat-label">Low</div>
+            </div>
+            <div class="stat-card info">
+                <div class="stat-value">@_selectedScan.InfoCount</div>
+                <div class="stat-label">Info</div>
+            </div>
+        </div>
+
+        <!-- Vulnerabilities Table -->
+        @if (_selectedScan.AllVulnerabilities.Any())
+        {
+            <h2>&#x1F6AB; Vulnerabilities</h2>
+
+            <div class="panel" style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap; margin-bottom: 0;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Filter Severity</label>
+                    <select class="form-select" @bind="_detailSeverityFilter">
+                        <option value="">All</option>
+                        <option value="Critical">Critical</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                        <option value="Info">Info</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Filter Module</label>
+                    <select class="form-select" @bind="_detailModuleFilter">
+                        <option value="">All</option>
+                        @foreach (var mod in _selectedScan.AllVulnerabilities.Select(v => v.Module).Distinct().OrderBy(m => m))
+                        {
+                            <option value="@mod">@mod</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-container" style="margin-top: 1rem;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Severity</th>
+                            <th>Type</th>
+                            <th>URL</th>
+                            <th>Parameter</th>
+                            <th>Description</th>
+                            <th>Remediation</th>
+                            <th>Module</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var vuln in _filteredVulnerabilities)
+                        {
+                            <tr>
+                                <td><span class="badge badge-@vuln.Severity.ToLower()">@vuln.Severity</span></td>
+                                <td>@vuln.Type</td>
+                                <td class="text-mono" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                                    title="@vuln.Url">@vuln.Url</td>
+                                <td class="text-mono">@vuln.Parameter</td>
+                                <td style="max-width:300px;">@vuln.Description</td>
+                                <td style="max-width:300px;">@vuln.Remediation</td>
+                                <td>@vuln.Module</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-muted" style="margin-top: 0.5rem;">
+                Showing @_filteredVulnerabilities.Count of @_selectedScan.AllVulnerabilities.Count vulnerabilities
+            </p>
+        }
+        else
+        {
+            <div class="panel" style="padding: 2rem; text-align: center;">
+                <p class="text-success" style="font-size: 1.1rem;">&#x2705; No vulnerabilities found!</p>
+                <p class="text-muted">This scan found no issues. Keep scanning regularly.</p>
+            </div>
+        }
+
+        <!-- Module Results -->
+        @if (_selectedScan.ModuleResults.Any())
+        {
+            <h2>&#x1F4CB; Module Details</h2>
+            @foreach (var module in _selectedScan.ModuleResults)
+            {
+                <div class="panel">
+                    <h3>
+                        @if (module.Completed) { <span class="text-success">&#x2705;</span> }
+                        else { <span class="text-danger">&#x274C;</span> }
+                        @module.ModuleName
+                    </h3>
+                    <p class="text-muted">
+                        Duration: @module.Duration.TotalSeconds.ToString("F1")s |
+                        Requests: @module.RequestsSent |
+                        Endpoints: @module.EndpointsTested |
+                        Findings: @module.Vulnerabilities.Count
+                    </p>
+                    @if (!string.IsNullOrEmpty(module.ErrorMessage))
+                    {
+                        <div class="alert alert-danger">@module.ErrorMessage</div>
+                    }
+                </div>
+            }
+        }
+    }
+}
+
+@code {
+    [Parameter] public string? JobId { get; set; }
+
+    private List<ScanHistoryItem> _allHistory = new();
+    private List<ScanHistoryItem> _filteredHistory = new();
+    private ScanHistoryItem? _selectedScan;
+    private List<Vulnerability> _filteredVulnerabilities = new();
+    private List<string> _allModules = new();
+
+    private string _severityFilter = "";
+    private string _moduleFilter = "";
+    private string _urlFilter = "";
+    private string _detailSeverityFilter = "";
+    private string _detailModuleFilter = "";
+
+    protected override void OnInitialized()
+    {
+        _allHistory = ScanService.RecentHistory.ToList();
+        _allModules = _allHistory
+            .SelectMany(h => h.ModuleResults.Select(m => m.ModuleName))
+            .Distinct().OrderBy(m => m).ToList();
+
+        ApplyFilters();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(JobId))
+        {
+            _selectedScan = ScanService.RecentHistory.FirstOrDefault(h => h.JobId == JobId);
+            ApplyDetailFilters();
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        _filteredHistory = _allHistory.Where(h =>
+        {
+            if (!string.IsNullOrEmpty(_severityFilter))
+            {
+                var has = _severityFilter switch
+                {
+                    "Critical" => h.CriticalCount > 0,
+                    "High" => h.HighCount > 0,
+                    "Medium" => h.MediumCount > 0,
+                    "Low" => h.LowCount > 0,
+                    "Info" => h.InfoCount > 0,
+                    _ => true
+                };
+                if (!has) return false;
+            }
+            if (!string.IsNullOrEmpty(_moduleFilter))
+            {
+                if (!h.ModuleResults.Any(m => m.ModuleName == _moduleFilter)) return false;
+            }
+            if (!string.IsNullOrEmpty(_urlFilter))
+            {
+                if (!h.TargetUrl.Contains(_urlFilter, StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            return true;
+        }).ToList();
+    }
+
+    private void ApplyDetailFilters()
+    {
+        if (_selectedScan == null) { _filteredVulnerabilities = new(); return; }
+
+        _filteredVulnerabilities = _selectedScan.AllVulnerabilities.Where(v =>
+        {
+            if (!string.IsNullOrEmpty(_detailSeverityFilter) && v.Severity != _detailSeverityFilter) return false;
+            if (!string.IsNullOrEmpty(_detailModuleFilter) && v.Module != _detailModuleFilter) return false;
+            return true;
+        }).OrderByDescending(v => v.Severity == "Critical" ? 0 :
+            v.Severity == "High" ? 1 :
+            v.Severity == "Medium" ? 2 :
+            v.Severity == "Low" ? 3 : 4).ToList();
+    }
+
+    public void Dispose() { }
+}

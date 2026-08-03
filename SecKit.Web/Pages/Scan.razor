@@ -1,0 +1,222 @@
+@page "/scan"
+@page "/scan/{JobId}"
+@inject ScanService ScanService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>SecKit — Run Scan</PageTitle>
+
+<h1>&#x1F50D; Run Security Scan</h1>
+
+@if (string.IsNullOrEmpty(JobId))
+{
+    <!-- New Scan Form -->
+    <div class="panel">
+        <div class="alert alert-warning">
+            <strong>&#x26A0;&#xFE0F; Legal Notice:</strong> Only scan systems you own or have explicit written permission to test.
+            Unauthorized scanning may be illegal.
+        </div>
+
+        <EditForm Model="@_scanForm" OnValidSubmit="@StartScan">
+            <div class="form-group">
+                <label class="form-label">Target URL</label>
+                <InputText @bind-Value="_scanForm.TargetUrl" class="form-input"
+                    placeholder="https://example.com or http://localhost:8080" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Scan Type</label>
+                <InputSelect @bind-Value="_scanForm.ScanType" class="form-select">
+                    <option value="full">&#x1F4A5; Full Suite (All Modules)</option>
+                    <option value="vuln">&#x1F9EA; Vulnerability Scan (SQLi, XSS, CSRF, SSRF, Path Traversal, Auth, Upload)</option>
+                    <option value="network">&#x1F310; Network Scan (Ports, SSL/TLS, Headers)</option>
+                    <option value="ai">&#x1F916; AI Security Test (Prompt Injection, Function Abuse, Data Leakage)</option>
+                    <option value="map">&#x1F5FA; Site Map (Crawler + Directory Fuzzer)</option>
+                    <optgroup label="Individual Modules">
+                        <option value="vuln-sqli">SQL Injection Only</option>
+                        <option value="vuln-xss">XSS Only</option>
+                        <option value="vuln-csrf">CSRF Only</option>
+                        <option value="vuln-ssrf">SSRF Only</option>
+                        <option value="vuln-path">Path Traversal Only</option>
+                        <option value="vuln-auth">Auth Only</option>
+                        <option value="vuln-upload">File Upload Only</option>
+                        <option value="net-port">Port Scan Only</option>
+                        <option value="net-ssl">SSL/TLS Only</option>
+                        <option value="net-headers">Headers Only</option>
+                    </optgroup>
+                </InputSelect>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Scan Profile</label>
+                <InputSelect @bind-Value="_scanForm.Profile" class="form-select">
+                    <option value="light">&#x1F7E2; Light (Fast, surface-level)</option>
+                    <option value="medium">&#x1F7E1; Medium (Balanced)</option>
+                    <option value="deep">&#x1F534; Deep (Thorough, slowest)</option>
+                </InputSelect>
+            </div>
+
+            <div class="form-group">
+                <label class="form-checkbox">
+                    <InputCheckbox @bind-Value="_scanForm.Authorized" />
+                    <span>I confirm I am authorized to test this target. I understand unauthorized scanning may be illegal.</span>
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@(!_scanForm.Authorized || string.IsNullOrWhiteSpace(_scanForm.TargetUrl))">
+                &#x25B6; Start Scan
+            </button>
+        </EditForm>
+    </div>
+}
+else
+{
+    <!-- Live Scan Progress View -->
+    @if (_job == null)
+    {
+        <div class="panel text-center" style="padding: 3rem;">
+            <div class="spinner"></div>
+            <p class="text-muted" style="margin-top: 1rem;">Loading scan status...</p>
+        </div>
+    }
+    else
+    {
+        <div class="panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        @if (_job.Status == ScanStatus.Running) { <span>&#x1F50D;</span> }
+                        else if (_job.Status == ScanStatus.Completed) { <span>&#x2705;</span> }
+                        else if (_job.Status == ScanStatus.Failed) { <span>&#x274C;</span> }
+                        @_job.TargetUrl
+                    </h3>
+                    <span class="text-muted">@_job.ScanType (@_job.Profile) &mdash;
+                        @_job.Status — @_job.Duration.ToString(@"m\m\ s\s")</span>
+                </div>
+                <span class="text-muted">Job: @_job.JobId</span>
+            </div>
+
+            @if (_job.Status == ScanStatus.Failed)
+            {
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> @_job.ErrorMessage
+                </div>
+            }
+
+            <!-- Progress bar -->
+            <div class="progress-container">
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" style="width:@_job.ProgressPercent%"></div>
+                </div>
+                <div class="progress-text">
+                    @if (_job.Status == ScanStatus.Running)
+                    {
+                        <span>Running: @_job.CurrentModule — @_job.ProgressPercent%</span>
+                    }
+                    else
+                    {
+                        <span>@_job.ProgressPercent%</span>
+                    }
+                </div>
+            </div>
+
+            <!-- Module Statuses -->
+            <h3>Module Status</h3>
+            <div class="module-status-list">
+                @foreach (var kvp in _job.ModuleStatuses.OrderBy(x => x.Key))
+                {
+                    var status = kvp.Value;
+                    var icon = status switch
+                    {
+                        "running" => ("&#x23F3;", "running"),
+                        "completed" => ("&#x2705;", "completed"),
+                        "failed" => ("&#x274C;", "failed"),
+                        _ => ("&#x23F3;", "pending")
+                    };
+                    <div class="module-status-item">
+                        <span class="module-status-icon @icon.Item2">@((MarkupString)icon.Item1)</span>
+                        <span>@kvp.Key</span>
+                        @if (status == "failed" && _job.ModuleErrors.TryGetValue(kvp.Key, out var err))
+                        {
+                            <span class="text-danger text-mono" style="font-size:0.8rem;">— @err</span>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Scan complete: show summary + link to results -->
+            @if (_job.Status == ScanStatus.Completed)
+            {
+                <div class="alert alert-success" style="margin-top: 1.5rem;">
+                    <strong>Scan Complete!</strong> @_job.TotalFindings findings in @_job.Duration.ToString(@"m\m\ s\s").
+                </div>
+                <a href="/results" class="btn btn-primary" style="margin-top: 0.5rem;">View Results</a>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string? JobId { get; set; }
+
+    private ScanForm _scanForm = new();
+    private ScanJob? _job;
+    private Timer? _timer;
+
+    private async Task StartScan()
+    {
+        if (!_scanForm.Authorized || string.IsNullOrWhiteSpace(_scanForm.TargetUrl))
+            return;
+
+        var job = await ScanService.StartScanAsync(
+            _scanForm.TargetUrl.Trim(),
+            _scanForm.ScanType,
+            _scanForm.Profile);
+
+        Navigation.NavigateTo($"/scan/{job.JobId}", forceLoad: false);
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(JobId))
+        {
+            _job = ScanService.GetScan(JobId);
+        }
+
+        if (_job != null)
+        {
+            _job.OnStatusChanged += OnJobStatusChanged;
+            _timer = new Timer(async _ =>
+            {
+                if (_job?.Status != ScanStatus.Completed && _job?.Status != ScanStatus.Failed)
+                {
+                    await InvokeAsync(StateHasChanged);
+                }
+                else
+                {
+                    _timer?.Dispose();
+                }
+            }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+    }
+
+    private async void OnJobStatusChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        if (_job != null)
+            _job.OnStatusChanged -= OnJobStatusChanged;
+    }
+
+    private class ScanForm
+    {
+        public string TargetUrl { get; set; } = "";
+        public string ScanType { get; set; } = "full";
+        public string Profile { get; set; } = "medium";
+        public bool Authorized { get; set; }
+    }
+}

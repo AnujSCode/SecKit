@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  seckit-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: seckit-web
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
+    volumes:
+      - ./reports:/app/reports
+      - ./appsettings.json:/app/appsettings.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - seckit-network
+
+  seckit-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: seckit-agent
+    entrypoint: ["dotnet", "/app/agent/seckit-agent.dll"]
+    environment:
+      - DOTNET_ENVIRONMENT=Production
+      - Agent__ScanInterval=24:00:00
+      - Agent__ScanType=network
+      - Agent__ScanProfile=medium
+      - Agent__AlertThreshold=High
+      - Agent__MonitoredTargets__0=https://example.com
+      - Agent__TelegramBotToken=${SECRET_TELEGRAM_BOT_TOKEN:-}
+      - Agent__TelegramChatId=${SECRET_TELEGRAM_CHAT_ID:-}
+      - Agent__ConfigPath=/app/appsettings.json
+      - Agent__LogPath=/app/logs/agent.log
+      - Agent__MonitorOpenPorts=true
+      - Agent__MonitorLogs=false
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - ./appsettings.json:/app/appsettings.json:ro
+    restart: unless-stopped
+    depends_on:
+      seckit-web:
+        condition: service_healthy
+    networks:
+      - seckit-network
+
+networks:
+  seckit-network:
+    driver: bridge

@@ -6,6 +6,10 @@ using SecKit.Modules.AiSecurityTester;
 using SecKit.Modules.TrafficMonitor;
 using SecKit.Modules.SiteMapper;
 using SecKit.Modules.TrafficAnalysis;
+using SecKit.Modules.ServerHardening;
+using SecKit.Modules.RedTeam;
+using SecKit.Modules.CloudAudit;
+using SecKit.Modules.Reporting;
 
 using Spectre.Console;
 
@@ -16,6 +20,9 @@ public class Program
 {
     private static ConfigManager _config = null!;
     private static HttpClient _httpClient = null!;
+
+    // Store the most recent scan results for WAF/IDS rule generation and compliance checks
+    private static SecurityReport? _lastScanReport;
 
     public static async Task<int> Main(string[] args)
     {
@@ -40,7 +47,7 @@ public class Program
 
             // Splash screen
             AnsiConsole.Write(new FigletText("SecKit").Color(Color.Red));
-            AnsiConsole.MarkupLine("[grey]Security Toolkit v1.0.0 — .NET 8[/]");
+            AnsiConsole.MarkupLine("[grey]Security Toolkit v2.0.0 — .NET 8[/]");
             AnsiConsole.MarkupLine($"[grey]Profile: {_config.ActiveProfile} | Threads: {_config.Threads} | Timeout: {_config.TimeoutSeconds}s[/]");
             AnsiConsole.WriteLine();
 
@@ -73,9 +80,14 @@ public class Program
                             "4. Site Map (Crawl + Fuzz)",
                             "5. Traffic Monitor (Live Log Watch + Attack Detection)",
                             "6. Traffic Analysis (GeoIP, Honeypot, Subdomain Enum)",
-                            "7. 💥 Full Suite (All of the above)",
-                            "8. ⚙️  Settings",
-                            "9. ❌ Exit"
+                            "7. Server Hardening (SSH, Filesystem, Users, Processes, Cron, Docker, Firewall)",
+                            "8. Red Team Tools (JWT, CORS, Credentials, GraphQL)",
+                            "9. Cloud Audit (S3 Buckets, IAM, Security Groups)",
+                            "10. Generate WAF/IDS Rules (from last scan results)",
+                            "11. Compliance Check (CIS, PCI-DSS, OWASP ASVS)",
+                            "12. 💥 Full Suite (All of the above)",
+                            "13. ⚙️  Settings",
+                            "14. ❌ Exit"
                         }));
 
                 switch (choice)
@@ -99,12 +111,27 @@ public class Program
                         await RunTrafficAnalysisAsync();
                         break;
                     case string s when s.StartsWith("7"):
-                        await RunFullSuiteAsync();
+                        await RunServerHardeningAsync();
                         break;
                     case string s when s.StartsWith("8"):
-                        ShowSettings();
+                        await RunRedTeamAsync();
                         break;
                     case string s when s.StartsWith("9"):
+                        await RunCloudAuditAsync();
+                        break;
+                    case string s when s.StartsWith("10"):
+                        await RunWafIdsGenerationAsync();
+                        break;
+                    case string s when s.StartsWith("11"):
+                        await RunComplianceCheckAsync();
+                        break;
+                    case string s when s.StartsWith("12"):
+                        await RunFullSuiteAsync();
+                        break;
+                    case string s when s.StartsWith("13"):
+                        ShowSettings();
+                        break;
+                    case string s when s.StartsWith("14"):
                         AnsiConsole.MarkupLine("[green]Goodbye![/]");
                         return 0;
                 }
@@ -157,13 +184,14 @@ public class Program
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(targetUrl))
+            if (string.IsNullOrWhiteSpace(targetUrl) && scanType is not "rules" and not "compliance")
             {
-                Console.Error.WriteLine("Usage: seckit --scan <url> --type <full|vuln|network|ai|map> [--output <path>] [--profile <light|medium|deep>] --i-am-authorized");
+                Console.Error.WriteLine("Usage: seckit --scan <url> --type <full|vuln|network|ai|map|server|redteam|cloud|rules|compliance> [--output <path>] [--profile <light|medium|deep>] --i-am-authorized");
                 return 1;
             }
 
-            if (!authorized)
+            // Rules and compliance can work from last scan results without a fresh target
+            if (!authorized && scanType is not "rules" and not "compliance")
             {
                 Console.Error.WriteLine("Refusing to scan: pass --i-am-authorized to confirm you have explicit permission to test this target.");
                 Console.Error.WriteLine("Unauthorized scanning may be illegal (CFAA, UK Computer Misuse Act, etc.).");
@@ -173,7 +201,7 @@ public class Program
             var report = new SecurityReport
             {
                 ScanProfile = _config.ActiveProfile,
-                TargetUrls = new List<string> { targetUrl },
+                TargetUrls = string.IsNullOrWhiteSpace(targetUrl) ? new List<string>() : new List<string> { targetUrl },
                 ScanStartTime = DateTime.UtcNow
             };
 
@@ -186,25 +214,65 @@ public class Program
                     await RunNetworkScanInternalAsync(targetUrl, report);
                     await RunAiScanInternalAsync(targetUrl, report);
                     await RunSiteMapInternalAsync(targetUrl, report);
+                    await RunServerHardeningInternalAsync(targetUrl, report);
+                    await RunRedTeamInternalAsync(targetUrl, report);
+                    await RunCloudAuditInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
                     break;
                 case "vuln":
                     await RunVulnScanInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
                     break;
                 case "network":
                     await RunNetworkScanInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
                     break;
                 case "ai":
                     await RunAiScanInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
                     break;
                 case "map":
                     await RunSiteMapInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
                     break;
+                case "server":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Server hardening scan requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunServerHardeningInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "redteam":
+                    await RunRedTeamInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "cloud":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Cloud audit requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunCloudAuditInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "rules":
+                    await RunWafIdsGenerationFromLastScanAsync(report);
+                    // Rules generation doesn't need the standard report output
+                    Logger.Info($"WAF/IDS rules generated to {outputPath}");
+                    return 0;
+                case "compliance":
+                    await RunComplianceCheckFromLastScanAsync(report);
+                    Logger.Info($"Compliance report generated to {outputPath}");
+                    return 0;
                 default:
                     Console.Error.WriteLine($"Unknown scan type: {scanType}");
                     return 1;
             }
 
             report.ScanEndTime = DateTime.UtcNow;
+            _lastScanReport = report;
             await ReportGenerator.GenerateAsync(report, outputPath, _config.OutputFormat);
 
             Logger.Info($"Scan complete. {report.TotalVulnerabilities} findings. Reports saved to {outputPath}");
@@ -238,6 +306,7 @@ public class Program
             });
 
         report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
         await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
 
         AnsiConsole.MarkupLine($"[green]Vulnerability scan complete! {report.TotalVulnerabilities} findings.[/]");
@@ -262,6 +331,7 @@ public class Program
             });
 
         report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
         await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
 
         AnsiConsole.MarkupLine($"[green]Network scan complete! {report.TotalVulnerabilities} findings.[/]");
@@ -286,6 +356,7 @@ public class Program
             });
 
         report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
         await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
 
         AnsiConsole.MarkupLine($"[green]AI security test complete! {report.TotalVulnerabilities} findings.[/]");
@@ -310,6 +381,7 @@ public class Program
             });
 
         report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
         await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
 
         AnsiConsole.MarkupLine($"[green]Site mapping complete! {report.TotalVulnerabilities} findings.[/]");
@@ -352,6 +424,7 @@ public class Program
                     };
                     report.ModuleResults.Add(result);
                     report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+                    _lastScanReport = report;
                     await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
                 });
 
@@ -384,6 +457,7 @@ public class Program
                     };
                     report.ModuleResults.Add(result);
                     report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+                    _lastScanReport = report;
                     await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
                 });
         }
@@ -406,6 +480,7 @@ public class Program
             };
             report.ModuleResults.Add(hpResult);
             report.AllVulnerabilities.AddRange(hpResult.Vulnerabilities);
+            _lastScanReport = report;
             await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
         }
         else if (analysisChoice.Contains("Subdomain"))
@@ -426,6 +501,7 @@ public class Program
                     };
                     report.ModuleResults.Add(result);
                     report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+                    _lastScanReport = report;
                     await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
                 });
 
@@ -433,11 +509,366 @@ public class Program
         }
     }
 
+    private static async Task RunServerHardeningAsync()
+    {
+        // Authorization gate for server scans
+        AnsiConsole.Write(new Panel(
+            "[yellow]Server hardening scans the local system configuration.[/]\n" +
+            "This includes SSH, users, filesystem, processes, cron, Docker, and firewall.")
+            .Header("[darkorange] SERVER HARDENING [/]")
+            .BorderColor(Color.DarkOrange));
+
+        if (!AnsiConsole.Confirm("[yellow]Run server hardening scan?[/]", false))
+        {
+            AnsiConsole.MarkupLine("[grey]Aborted.[/]");
+            return;
+        }
+
+        var scanMode = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Select scan scope:")
+                .AddChoices(new[]
+                {
+                    "Full Hardening Scan (All 7 checks)",
+                    "Custom Selection (Choose which checks)"
+                }));
+
+        var target = AnsiConsole.Ask<string>("Enter server hostname/IP:", "localhost");
+        var scanner = new ServerHardeningScanner(_config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { target },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        if (scanMode.Contains("Full"))
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Running full server hardening scan...", async ctx =>
+                {
+                    var result = await scanner.ScanAllAsync(target);
+                    report.ModuleResults.Add(result);
+                    report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+                });
+        }
+        else
+        {
+            // Show sub-menu for picking individual checks
+            var subChoices = AnsiConsole.Prompt(
+                new MultiSelectionPrompt<string>()
+                    .Title("[yellow]Select checks to run (space to toggle, enter to confirm):[/]")
+                    .AddChoices(new[]
+                    {
+                        "SSH Configuration",
+                        "Filesystem Permissions",
+                        "User Accounts",
+                        "Running Processes",
+                        "Cron Jobs",
+                        "Docker Security",
+                        "Firewall Configuration"
+                    }));
+
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Running selected hardening checks...", async ctx =>
+                {
+                    if (subChoices.Contains("SSH Configuration"))
+                        AddResults(report, await scanner.CheckSshAsync(target), "SSH Hardening", target);
+                    if (subChoices.Contains("Filesystem Permissions"))
+                        AddResults(report, await scanner.CheckFilesystemAsync(target), "Filesystem", target);
+                    if (subChoices.Contains("User Accounts"))
+                        AddResults(report, await scanner.CheckUsersAsync(target), "Users", target);
+                    if (subChoices.Contains("Running Processes"))
+                        AddResults(report, await scanner.CheckProcessesAsync(target), "Processes", target);
+                    if (subChoices.Contains("Cron Jobs"))
+                        AddResults(report, await scanner.CheckCronAsync(target), "Cron", target);
+                    if (subChoices.Contains("Docker Security"))
+                        AddResults(report, await scanner.CheckDockerAsync(target), "Docker", target);
+                    if (subChoices.Contains("Firewall Configuration"))
+                        AddResults(report, await scanner.CheckFirewallAsync(target), "Firewall", target);
+                });
+        }
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Server hardening complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunRedTeamAsync()
+    {
+        var url = AnsiConsole.Ask<string>("Enter target URL:", _config.TargetUrls.FirstOrDefault() ?? "http://localhost:8080");
+
+        var scanMode = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Select red team scope:")
+                .AddChoices(new[]
+                {
+                    "Full Red Team Scan (All 4 tools)",
+                    "Custom Selection (Choose which tools)"
+                }));
+
+        var scanner = new RedTeamScanner(HttpClientFactory.Create(_config), _config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { url },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        if (scanMode.Contains("Full"))
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Running full red team scan...", async ctx =>
+                {
+                    var result = await scanner.ScanAllAsync(url);
+                    report.ModuleResults.Add(result);
+                    report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+                });
+        }
+        else
+        {
+            var subChoices = AnsiConsole.Prompt(
+                new MultiSelectionPrompt<string>()
+                    .Title("[yellow]Select tools to run (space to toggle, enter to confirm):[/]")
+                    .AddChoices(new[]
+                    {
+                        "JWT Analysis",
+                        "CORS Misconfiguration",
+                        "Credential Testing",
+                        "GraphQL Introspection"
+                    }));
+
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Running selected red team tools...", async ctx =>
+                {
+                    if (subChoices.Contains("JWT Analysis"))
+                        AddResults(report, await scanner.TestJwtAsync(url), "JWT", url);
+                    if (subChoices.Contains("CORS Misconfiguration"))
+                        AddResults(report, await scanner.TestCorsAsync(url), "CORS", url);
+                    if (subChoices.Contains("Credential Testing"))
+                        AddResults(report, await scanner.TestCredentialsAsync(url), "Credentials", url);
+                    if (subChoices.Contains("GraphQL Introspection"))
+                        AddResults(report, await scanner.TestGraphQlAsync(url), "GraphQL", url);
+                });
+        }
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Red team scan complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunCloudAuditAsync()
+    {
+        // Authorization gate
+        AnsiConsole.Write(new Panel(
+            "[yellow]Cloud audit checks cloud resource configurations (S3 buckets, IAM, security groups).[/]\n" +
+            "Only audit cloud resources you [bold]own[/] or have [bold]explicit written permission[/] to test.")
+            .Header("[blue] CLOUD AUDIT [/]")
+            .BorderColor(Color.Blue));
+
+        if (!AnsiConsole.Confirm("[yellow]I confirm I am authorized to audit these cloud resources. Continue?[/]", false))
+        {
+            AnsiConsole.MarkupLine("[grey]Aborted.[/]");
+            return;
+        }
+
+        var target = AnsiConsole.Ask<string>("Enter target domain/account:", _config.TargetUrls.FirstOrDefault() ?? "");
+
+        var scanMode = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Select audit scope:")
+                .AddChoices(new[]
+                {
+                    "Full Cloud Audit (All 3 services)",
+                    "Custom Selection (Choose which services)"
+                }));
+
+        var scanner = new CloudAuditScanner(_config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { target },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        if (scanMode.Contains("Full"))
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Running full cloud audit...", async ctx =>
+                {
+                    var result = await scanner.ScanAllAsync(target);
+                    report.ModuleResults.Add(result);
+                    report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+                });
+        }
+        else
+        {
+            var subChoices = AnsiConsole.Prompt(
+                new MultiSelectionPrompt<string>()
+                    .Title("[yellow]Select services to audit (space to toggle, enter to confirm):[/]")
+                    .AddChoices(new[]
+                    {
+                        "S3 Buckets",
+                        "IAM Roles & Policies",
+                        "Security Groups"
+                    }));
+
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Running selected cloud audit checks...", async ctx =>
+                {
+                    if (subChoices.Contains("S3 Buckets"))
+                        AddResults(report, await scanner.AuditS3BucketsAsync(target), "S3 Buckets", target);
+                    if (subChoices.Contains("IAM Roles & Policies"))
+                        AddResults(report, await scanner.AuditIamAsync(target), "IAM", target);
+                    if (subChoices.Contains("Security Groups"))
+                        AddResults(report, await scanner.AuditSecurityGroupsAsync(target), "Security Groups", target);
+                });
+        }
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Cloud audit complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunWafIdsGenerationAsync()
+    {
+        if (_lastScanReport == null || _lastScanReport.AllVulnerabilities.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No previous scan results available. Run a vulnerability or network scan first.[/]");
+            return;
+        }
+
+        var vulns = _lastScanReport.AllVulnerabilities;
+
+        AnsiConsole.MarkupLine($"[grey]Generating WAF/IDS rules from {vulns.Count} findings...[/]");
+
+        var rulesChoice = AnsiConsole.Prompt(
+            new MultiSelectionPrompt<string>()
+                .Title("[yellow]Select rule types to generate:[/]")
+                .AddChoices(new[]
+                {
+                    "ModSecurity WAF Rules",
+                    "Cloudflare WAF Rules (JSON)",
+                    "nginx Rate-Limit Config",
+                    "Snort IDS Rules",
+                    "Suricata IDS Rules"
+                }));
+
+        if (rulesChoice.Any(c => c.Contains("ModSecurity") || c.Contains("Cloudflare") || c.Contains("nginx")))
+        {
+            var wafGen = new WafGenerator(_config.OutputDirectory);
+            var wafReport = await wafGen.GenerateAsync(vulns);
+
+            AnsiConsole.MarkupLine("[green]WAF rules generated:[/]");
+            if (rulesChoice.Any(c => c.Contains("ModSecurity")))
+                AnsiConsole.MarkupLine($"  ModSecurity: {wafReport.ModSecurityPath} ({wafReport.ModSecurityRuleCount} rules)");
+            if (rulesChoice.Any(c => c.Contains("Cloudflare")))
+                AnsiConsole.MarkupLine($"  Cloudflare:  {wafReport.CloudflarePath} ({wafReport.CloudflareRuleCount} rules)");
+            if (rulesChoice.Any(c => c.Contains("nginx")))
+                AnsiConsole.MarkupLine($"  nginx:       {wafReport.NginxPath}");
+        }
+
+        if (rulesChoice.Any(c => c.Contains("Snort") || c.Contains("Suricata")))
+        {
+            var idsGen = new IdsExporter(_config.OutputDirectory);
+            var idsReport = await idsGen.GenerateAsync(vulns);
+
+            AnsiConsole.MarkupLine("[green]IDS rules generated:[/]");
+            if (rulesChoice.Any(c => c.Contains("Snort")))
+                AnsiConsole.MarkupLine($"  Snort:    {idsReport.SnortPath} ({idsReport.SnortRuleCount} rules)");
+            if (rulesChoice.Any(c => c.Contains("Suricata")))
+                AnsiConsole.MarkupLine($"  Suricata: {idsReport.SuricataPath} ({idsReport.SuricataRuleCount} rules)");
+        }
+
+        AnsiConsole.MarkupLine("[green]WAF/IDS rule generation complete![/]");
+    }
+
+    private static async Task RunComplianceCheckAsync()
+    {
+        if (_lastScanReport == null || _lastScanReport.AllVulnerabilities.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No previous scan results available. Run a scan first to generate compliance mappings.[/]");
+            return;
+        }
+
+        var vulns = _lastScanReport.AllVulnerabilities;
+
+        AnsiConsole.MarkupLine($"[grey]Running compliance check against {vulns.Count} findings...[/]");
+
+        var frameworksChoice = AnsiConsole.Prompt(
+            new MultiSelectionPrompt<string>()
+                .Title("[yellow]Select compliance frameworks:[/]")
+                .AddChoices(new[]
+                {
+                    "CIS Benchmarks",
+                    "PCI-DSS v4.0",
+                    "OWASP ASVS"
+                }));
+
+        var checker = new ComplianceChecker(_config.OutputDirectory);
+        var report = await checker.CheckAsync(vulns);
+
+        // Display summary
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Framework");
+        table.AddColumn("Passed");
+        table.AddColumn("Failed");
+        table.AddColumn("Pass Rate");
+
+        if (frameworksChoice.Contains("CIS Benchmarks"))
+        {
+            table.AddRow(
+                "[cyan]CIS Benchmarks[/]",
+                $"[green]{report.CisPassed}[/]",
+                $"[red]{report.CisFailed}[/]",
+                $"[yellow]{report.CisPassRate:P0}[/]");
+        }
+        if (frameworksChoice.Contains("PCI-DSS"))
+        {
+            table.AddRow(
+                "[cyan]PCI-DSS v4.0[/]",
+                $"[green]{report.PciPassed}[/]",
+                $"[red]{report.PciFailed}[/]",
+                $"[yellow]{report.PciPassRate:P0}[/]");
+        }
+        if (frameworksChoice.Contains("OWASP"))
+        {
+            table.AddRow(
+                "[cyan]OWASP ASVS[/]",
+                $"[green]{report.OwaspPassed}[/]",
+                $"[red]{report.OwaspFailed}[/]",
+                $"[yellow]{report.OwaspPassRate:P0}[/]");
+        }
+
+        table.AddRow(
+            "[bold]OVERALL[/]",
+            $"[green]{report.TotalPassed}[/]",
+            $"[red]{report.TotalControls - report.TotalPassed}[/]",
+            $"[bold yellow]{report.OverallPassRate:P0}[/]");
+
+        AnsiConsole.Write(table);
+        AnsiConsole.MarkupLine($"[green]Compliance report saved to: {report.ReportPath}[/]");
+        AnsiConsole.MarkupLine($"[grey]JSON report: {report.JsonPath}[/]");
+    }
+
     private static async Task RunFullSuiteAsync()
     {
         var url = AnsiConsole.Ask<string>("Enter target URL:", _config.TargetUrls.FirstOrDefault() ?? "http://localhost:8080");
         var report = await RunFullSuiteInternalWithProgressAsync(url);
 
+        _lastScanReport = report;
         await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
 
         var table = new Table().Border(TableBorder.Rounded);
@@ -453,6 +884,45 @@ public class Program
 
         AnsiConsole.Write(table);
         AnsiConsole.MarkupLine($"[green]Full suite complete in {report.TotalDuration.TotalMinutes:F1} minutes![/]");
+    }
+
+    #endregion
+
+    #region Rules and Compliance helpers (from last scan)
+
+    private static async Task RunWafIdsGenerationFromLastScanAsync(SecurityReport report)
+    {
+        var vulns = report.AllVulnerabilities;
+        if (vulns.Count == 0 && _lastScanReport != null)
+            vulns = _lastScanReport.AllVulnerabilities;
+
+        if (vulns.Count == 0)
+        {
+            Logger.Warning("No findings to generate rules from.");
+            return;
+        }
+
+        var wafGen = new WafGenerator(_config.OutputDirectory);
+        await wafGen.GenerateAsync(vulns);
+
+        var idsGen = new IdsExporter(_config.OutputDirectory);
+        await idsGen.GenerateAsync(vulns);
+    }
+
+    private static async Task RunComplianceCheckFromLastScanAsync(SecurityReport report)
+    {
+        var vulns = report.AllVulnerabilities;
+        if (vulns.Count == 0 && _lastScanReport != null)
+            vulns = _lastScanReport.AllVulnerabilities;
+
+        if (vulns.Count == 0)
+        {
+            Logger.Warning("No findings to run compliance check against.");
+            return;
+        }
+
+        var checker = new ComplianceChecker(_config.OutputDirectory);
+        await checker.CheckAsync(vulns);
     }
 
     #endregion
@@ -590,6 +1060,45 @@ public class Program
         report.AllVulnerabilities.AddRange(fuzzResult.Vulnerabilities);
     }
 
+    private static async Task RunServerHardeningInternalAsync(string target, SecurityReport report)
+    {
+        var scanner = new ServerHardeningScanner(_config);
+
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Server Hardening Scan...", ConsoleColor.Cyan);
+
+        var result = await scanner.ScanAllAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunRedTeamInternalAsync(string url, SecurityReport report)
+    {
+        var scanner = new RedTeamScanner(HttpClientFactory.Create(_config), _config);
+
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Red Team Scan...", ConsoleColor.Cyan);
+
+        var result = await scanner.ScanAllAsync(url);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunCloudAuditInternalAsync(string target, SecurityReport report)
+    {
+        var scanner = new CloudAuditScanner(_config);
+
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Cloud Audit...", ConsoleColor.Cyan);
+
+        var result = await scanner.ScanAllAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
     private static async Task<SecurityReport> RunFullSuiteInternalWithProgressAsync(string url)
     {
         var report = new SecurityReport
@@ -614,6 +1123,9 @@ public class Program
                 var netTask = ctx.AddTask("[cyan]Network Scan[/]");
                 var aiTask = ctx.AddTask("[magenta]AI Security Test[/]");
                 var mapTask = ctx.AddTask("[green]Site Map[/]");
+                var serverTask = ctx.AddTask("[darkorange]Server Hardening[/]");
+                var redTask = ctx.AddTask("[red]Red Team[/]");
+                var cloudTask = ctx.AddTask("[blue]Cloud Audit[/]");
 
                 // Run vulnerability scan
                 await RunVulnScanInternalAsync(url, report);
@@ -630,10 +1142,38 @@ public class Program
                 // Run site map
                 await RunSiteMapInternalAsync(url, report);
                 mapTask.Value = 100;
+
+                // Run server hardening
+                await RunServerHardeningInternalAsync(url, report);
+                serverTask.Value = 100;
+
+                // Run red team
+                await RunRedTeamInternalAsync(url, report);
+                redTask.Value = 100;
+
+                // Run cloud audit
+                await RunCloudAuditInternalAsync(url, report);
+                cloudTask.Value = 100;
             });
 
         report.ScanEndTime = DateTime.UtcNow;
         return report;
+    }
+
+    /// <summary>Helper to add a list of vulnerabilities to a report as a module result.</summary>
+    private static void AddResults(SecurityReport report, List<Vulnerability> vulns, string moduleName, string targetUrl)
+    {
+        var result = new ScanResult
+        {
+            ModuleName = moduleName,
+            TargetUrl = targetUrl,
+            StartTime = DateTime.UtcNow,
+            EndTime = DateTime.UtcNow,
+            Completed = true
+        };
+        result.Vulnerabilities.AddRange(vulns);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(vulns);
     }
 
     #endregion

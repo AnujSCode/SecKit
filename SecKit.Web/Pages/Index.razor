@@ -1,0 +1,170 @@
+@page "/"
+@inject ScanService ScanService
+@implements IDisposable
+
+<PageTitle>SecKit — Dashboard</PageTitle>
+
+<h1>&#x1F4CA; Dashboard</h1>
+
+@if (_stats != null)
+{
+    <!-- Quick Stats -->
+    <div class="card-grid">
+        <div class="stat-card total">
+            <div class="stat-value">@_stats.TotalScans</div>
+            <div class="stat-label">Total Scans</div>
+        </div>
+        <div class="stat-card critical">
+            <div class="stat-value">@_stats.CriticalCount</div>
+            <div class="stat-label">Critical</div>
+        </div>
+        <div class="stat-card high">
+            <div class="stat-value">@_stats.HighCount</div>
+            <div class="stat-label">High</div>
+        </div>
+        <div class="stat-card medium">
+            <div class="stat-value">@_stats.MediumCount</div>
+            <div class="stat-label">Medium</div>
+        </div>
+        <div class="stat-card low">
+            <div class="stat-value">@_stats.LowCount</div>
+            <div class="stat-label">Low</div>
+        </div>
+        <div class="stat-card info">
+            <div class="stat-value">@_stats.TotalVulnerabilities</div>
+            <div class="stat-label">Total Findings</div>
+        </div>
+    </div>
+
+    <!-- Last Scan -->
+    @if (_stats.LastScanAt.HasValue)
+    {
+        <div class="panel">
+            <h3>Last Scan</h3>
+            <p>
+                <strong>Target:</strong>
+                <span class="text-mono">@_stats.LastScanTarget</span>
+            </p>
+            <p>
+                <strong>When:</strong> @_stats.LastScanAt.Value.ToString("yyyy-MM-dd HH:mm:ss") UTC
+                (@((DateTime.UtcNow - _stats.LastScanAt.Value).ToString(@"d\d\ h\h\ m\m")) ago)
+            </p>
+        </div>
+    }
+
+    <!-- Active Scans -->
+    @if (ScanService.ActiveScans.Any())
+    {
+        <h2>&#x1F50D; Active Scans</h2>
+        @foreach (var scan in ScanService.ActiveScans)
+        {
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h3>@scan.TargetUrl</h3>
+                        <span class="text-muted">@scan.ScanType (@scan.Profile) — Running for @scan.Duration.ToString(@"m\m\ s\s")</span>
+                    </div>
+                    <a href="/scan/@scan.JobId" class="btn btn-secondary btn-sm">View Progress</a>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" style="width:@scan.ProgressPercent%"></div>
+                    </div>
+                    <div class="progress-text">@scan.CurrentModule — @scan.ProgressPercent%</div>
+                </div>
+            </div>
+        }
+    }
+
+    <!-- Recent Scan History -->
+    <h2>&#x1F4C4; Recent Scans</h2>
+    @if (ScanService.RecentHistory.Any())
+    {
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Target</th>
+                        <th>Type</th>
+                        <th>Profile</th>
+                        <th>Duration</th>
+                        <th>Findings</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in ScanService.RecentHistory.Take(20))
+                    {
+                        <tr>
+                            <td>@item.ScanStartTime.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td class="text-mono">@item.TargetUrl</td>
+                            <td>@item.ScanType</td>
+                            <td>@item.Profile</td>
+                            <td>@item.Duration.ToString(@"m\m\ s\s")</td>
+                            <td>
+                                @if (item.CriticalCount > 0)
+                                {
+                                    <span class="badge badge-critical">@item.CriticalCount C</span>
+                                }
+                                @if (item.HighCount > 0)
+                                {
+                                    <span class="badge badge-high">@item.HighCount H</span>
+                                }
+                                @if (item.MediumCount > 0)
+                                {
+                                    <span class="badge badge-medium">@item.MediumCount M</span>
+                                }
+                                @if (item.TotalFindings == 0)
+                                {
+                                    <span class="text-success">Clean</span>
+                                }
+                            </td>
+                            <td>
+                                <a href="/results/@item.JobId" class="btn btn-secondary btn-sm">View</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="panel text-center" style="padding: 3rem;">
+            <p class="text-muted">No scans yet. Run your first scan to get started!</p>
+            <a href="/scan" class="btn btn-primary" style="margin-top: 1rem;">&#x1F50D; Run New Scan</a>
+        </div>
+    }
+}
+else
+{
+    <div class="panel text-center" style="padding: 3rem;">
+        <div class="spinner"></div>
+        <p class="text-muted" style="margin-top: 1rem;">Loading dashboard...</p>
+    </div>
+}
+
+<div style="margin-top: 2rem;">
+    <a href="/scan" class="btn btn-primary btn-block">&#x1F50D; Run New Scan</a>
+</div>
+
+@code {
+    private DashboardStats? _stats;
+    private Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        _stats = ScanService.GetStats();
+        _timer = new Timer(async _ =>
+        {
+            _stats = ScanService.GetStats();
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+}

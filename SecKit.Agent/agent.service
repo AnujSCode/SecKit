@@ -1,0 +1,31 @@
+[Unit]
+Description=SecKit Security Agent — Continuous Security Monitoring
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/dotnet /opt/seckit/SecKit.Agent.dll
+WorkingDirectory=/opt/seckit
+User=seckit
+Group=seckit
+Restart=always
+RestartSec=10
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=seckit-agent
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/seckit/logs /opt/seckit/reports
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

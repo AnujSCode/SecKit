@@ -1,0 +1,453 @@
+@page "/settings"
+@inject SecKit.Core.ConfigManager Config
+@implements IDisposable
+
+<PageTitle>SecKit — Settings</PageTitle>
+
+<h1>&#x2699;&#xFE0F; Settings</h1>
+
+<div class="alert alert-info">
+    Edit the configuration used by SecKit scans. Changes are written to <code>appsettings.json</code>.
+</div>
+
+<EditForm Model="@_settings" OnValidSubmit="@SaveSettings">
+    <!-- Target URLs -->
+    <div class="panel">
+        <h3>&#x1F3AF; Target URLs</h3>
+        <p class="text-muted" style="margin-bottom: 1rem;">Default target URLs (one per line):</p>
+
+        <div class="form-group">
+            <textarea class="form-input" rows="4" @bind="_targetUrlsText"
+                placeholder="http://localhost:8080&#10;https://example.com"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Auth Token</label>
+            <input class="form-input" @bind="_settings.AuthToken" placeholder="Bearer token for authenticated scans" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Session Cookie</label>
+            <input class="form-input" @bind="_settings.SessionCookie" placeholder="session=abc123..." />
+        </div>
+    </div>
+
+    <!-- Scan Profiles -->
+    <div class="panel">
+        <h3>&#x1F4CA; Scan Profiles</h3>
+
+        <div class="form-group">
+            <label class="form-label">Active Profile</label>
+            <select class="form-select" @bind="_settings.ActiveProfile">
+                <option value="light">Light (Fast, surface-level)</option>
+                <option value="medium">Medium (Balanced)</option>
+                <option value="deep">Deep (Thorough, slowest)</option>
+            </select>
+        </div>
+
+        <!-- Light Profile -->
+        <h4 style="color: var(--success); margin-top: 1rem;">Light Profile</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div class="form-group">
+                <label class="form-label">Max Depth</label>
+                <input type="number" class="form-input" @bind="_lightProfile.MaxDepth" min="1" max="20" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Max Pages</label>
+                <input type="number" class="form-input" @bind="_lightProfile.MaxPages" min="1" max="10000" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Timeout (s)</label>
+                <input type="number" class="form-input" @bind="_lightProfile.TimeoutSeconds" min="1" max="120" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Threads</label>
+                <input type="number" class="form-input" @bind="_lightProfile.Threads" min="1" max="100" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Fuzz Params</label>
+                <input type="number" class="form-input" @bind="_lightProfile.FuzzParams" min="1" max="5000" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Port Range Start</label>
+                <input type="number" class="form-input" @bind="_lightProfile.PortRangeStart" min="1" max="65535" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Port Range End</label>
+                <input type="number" class="form-input" @bind="_lightProfile.PortRangeEnd" min="1" max="65535" />
+            </div>
+        </div>
+
+        <!-- Medium Profile -->
+        <h4 style="color: var(--warning); margin-top: 1.5rem;">Medium Profile</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div class="form-group">
+                <label class="form-label">Max Depth</label>
+                <input type="number" class="form-input" @bind="_mediumProfile.MaxDepth" min="1" max="20" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Max Pages</label>
+                <input type="number" class="form-input" @bind="_mediumProfile.MaxPages" min="1" max="10000" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Timeout (s)</label>
+                <input type="number" class="form-input" @bind="_mediumProfile.TimeoutSeconds" min="1" max="120" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Threads</label>
+                <input type="number" class="form-input" @bind="_mediumProfile.Threads" min="1" max="100" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Fuzz Params</label>
+                <input type="number" class="form-input" @bind="_mediumProfile.FuzzParams" min="1" max="5000" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Port Range Start</label>
+                <input type="number" class="form-input" @bind="_mediumProfile.PortRangeStart" min="1" max="65535" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Port Range End</label>
+                <input type="number" class="form-input" @bind="_mediumProfile.PortRangeEnd" min="1" max="65535" />
+            </div>
+        </div>
+
+        <!-- Deep Profile -->
+        <h4 style="color: var(--danger); margin-top: 1.5rem;">Deep Profile</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div class="form-group">
+                <label class="form-label">Max Depth</label>
+                <input type="number" class="form-input" @bind="_deepProfile.MaxDepth" min="1" max="20" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Max Pages</label>
+                <input type="number" class="form-input" @bind="_deepProfile.MaxPages" min="1" max="10000" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Timeout (s)</label>
+                <input type="number" class="form-input" @bind="_deepProfile.TimeoutSeconds" min="1" max="120" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Threads</label>
+                <input type="number" class="form-input" @bind="_deepProfile.Threads" min="1" max="100" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Fuzz Params</label>
+                <input type="number" class="form-input" @bind="_deepProfile.FuzzParams" min="1" max="5000" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Port Range Start</label>
+                <input type="number" class="form-input" @bind="_deepProfile.PortRangeStart" min="1" max="65535" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Port Range End</label>
+                <input type="number" class="form-input" @bind="_deepProfile.PortRangeEnd" min="1" max="65535" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Proxy Settings -->
+    <div class="panel">
+        <h3>&#x1F310; Proxy Settings</h3>
+
+        <div class="form-group">
+            <label class="form-checkbox">
+                <input type="checkbox" @bind="_settings.ProxyEnabled" />
+                <span>Enable Proxy</span>
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Proxy URL</label>
+            <input class="form-input" @bind="_settings.ProxyUrl" placeholder="http://proxy:8080" disabled="@(!_settings.ProxyEnabled)" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Proxy Type</label>
+            <select class="form-select" @bind="_settings.ProxyType" disabled="@(!_settings.ProxyEnabled)">
+                <option value="HTTP">HTTP</option>
+                <option value="SOCKS5">SOCKS5</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Proxy Username</label>
+            <input class="form-input" @bind="_settings.ProxyUsername" placeholder="username" disabled="@(!_settings.ProxyEnabled)" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Proxy Password</label>
+            <input type="password" class="form-input" @bind="_settings.ProxyPassword" placeholder="password" disabled="@(!_settings.ProxyEnabled)" />
+        </div>
+    </div>
+
+    <!-- Custom Headers -->
+    <div class="panel">
+        <h3>&#x1F4E8; Custom Headers</h3>
+        <p class="text-muted" style="margin-bottom: 1rem;">
+            HTTP headers sent with every request (format: <code>Header-Name: value</code>, one per line):
+        </p>
+
+        <div class="form-group">
+            <textarea class="form-input" rows="4" @bind="_customHeadersText"
+                placeholder="User-Agent: SecKit/2.0&#10;Accept: */*&#10;Accept-Language: en-US"></textarea>
+        </div>
+    </div>
+
+    <!-- Output Settings -->
+    <div class="panel">
+        <h3>&#x1F4BE; Output Settings</h3>
+
+        <div class="form-group">
+            <label class="form-label">Output Directory</label>
+            <input class="form-input" @bind="_settings.OutputDirectory" placeholder="./reports" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Output Format</label>
+            <select class="form-select" @bind="_settings.OutputFormat">
+                <option value="both">HTML + JSON</option>
+                <option value="html">HTML Only</option>
+                <option value="json">JSON Only</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-checkbox">
+                <input type="checkbox" @bind="_settings.IncludeRawResponse" />
+                <span>Include Raw Response Data in Reports</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="panel">
+        <h3>&#x1F514; Notifications</h3>
+
+        <div class="form-group">
+            <label class="form-checkbox">
+                <input type="checkbox" @bind="_settings.NotificationsEnabled" />
+                <span>Enable Webhook Notifications</span>
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Webhook URL</label>
+            <input class="form-input" @bind="_settings.WebhookUrl" placeholder="https://hooks.slack.com/... or Telegram webhook"
+                disabled="@(!_settings.NotificationsEnabled)" />
+        </div>
+    </div>
+
+    <!-- Save -->
+    <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+        <button type="button" class="btn btn-primary" @onclick="SaveSettings">&#x1F4BE; Save Settings</button>
+        <button type="button" class="btn btn-secondary" @onclick="ReloadSettings">&#x1F504; Reload</button>
+    </div>
+</EditForm>
+
+@if (!string.IsNullOrEmpty(_statusMessage))
+{
+    <div class="alert @(_statusIsError ? "alert-danger" : "alert-success")" style="margin-top: 1rem;">
+        @_statusMessage
+    </div>
+}
+
+@code {
+    private SettingsForm _settings = new();
+    private ProfileForm _lightProfile = new();
+    private ProfileForm _mediumProfile = new();
+    private ProfileForm _deepProfile = new();
+    private string _targetUrlsText = "";
+    private string _customHeadersText = "";
+    private string _statusMessage = "";
+    private bool _statusIsError;
+
+    protected override void OnInitialized()
+    {
+        ReloadSettings();
+    }
+
+    private void ReloadSettings()
+    {
+        try
+        {
+            var configPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "appsettings.json");
+
+            if (!File.Exists(configPath))
+            {
+                _statusMessage = "No appsettings.json found. Defaults will be used.";
+                _statusIsError = false;
+                return;
+            }
+
+            var json = File.ReadAllText(configPath);
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Load into forms
+            _settings.ActiveProfile = Config.ActiveProfile;
+            _settings.AuthToken = Config.AuthToken;
+            _settings.SessionCookie = Config.AuthCookie;
+            _settings.ProxyEnabled = Config.ProxyEnabled;
+            _settings.ProxyUrl = Config.ProxyUrl ?? "";
+            _settings.ProxyType = Config.ProxyType;
+            _settings.ProxyUsername = Config.ProxyUsername ?? "";
+            _settings.ProxyPassword = Config.ProxyPassword ?? "";
+            _settings.OutputDirectory = Config.OutputDirectory;
+            _settings.OutputFormat = Config.OutputFormat;
+            _settings.IncludeRawResponse = Config.IncludeRawResponse;
+
+            // Load targets
+            _targetUrlsText = string.Join("\n", Config.TargetUrls);
+
+            // Load custom headers
+            var hdrList = new List<string>();
+            foreach (var kvp in Config.CustomHeaders)
+                hdrList.Add($"{kvp.Key}: {kvp.Value}");
+            _customHeadersText = string.Join("\n", hdrList);
+
+            // Load profiles
+            var profiles = new Dictionary<string, (int maxDepth, int maxPages, int timeout, int threads, int fuzz, int portStart, int portEnd)>
+            {
+                ["light"] = (2, 50, 10, 5, 20, 1, 1024),
+                ["medium"] = (4, 200, 15, 10, 100, 1, 5000),
+                ["deep"] = (8, 1000, 30, 20, 500, 1, 65535)
+            };
+
+            if (root.TryGetProperty("scanProfiles", out var spEl))
+            {
+                foreach (var name in new[] { "light", "medium", "deep" })
+                {
+                    if (spEl.TryGetProperty(name, out var profEl))
+                    {
+                        var p = new ProfileForm();
+                        if (profEl.TryGetProperty("maxDepth", out var v0)) p.MaxDepth = v0.GetInt32();
+                        if (profEl.TryGetProperty("maxPages", out var v1)) p.MaxPages = v1.GetInt32();
+                        if (profEl.TryGetProperty("timeoutSeconds", out var v2)) p.TimeoutSeconds = v2.GetInt32();
+                        if (profEl.TryGetProperty("threads", out var v3)) p.Threads = v3.GetInt32();
+                        if (profEl.TryGetProperty("fuzzParams", out var v4)) p.FuzzParams = v4.GetInt32();
+                        if (profEl.TryGetProperty("portRangeStart", out var v5)) p.PortRangeStart = v5.GetInt32();
+                        if (profEl.TryGetProperty("portRangeEnd", out var v6)) p.PortRangeEnd = v6.GetInt32();
+
+                        switch (name)
+                        {
+                            case "light": _lightProfile = p; break;
+                            case "medium": _mediumProfile = p; break;
+                            case "deep": _deepProfile = p; break;
+                        }
+                    }
+                }
+            }
+
+            _statusMessage = "";
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Error loading settings: {ex.Message}";
+            _statusIsError = true;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            var configPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "appsettings.json");
+            var dir = Path.GetDirectoryName(configPath);
+            if (dir != null) Directory.CreateDirectory(dir);
+
+            // Parse URLs
+            var urls = _targetUrlsText.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(u => u.Trim()).Where(u => !string.IsNullOrEmpty(u)).ToList();
+
+            // Parse headers
+            var headers = new Dictionary<string, string>();
+            foreach (var line in _customHeadersText.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var parts = line.Trim().Split(':', 2);
+                if (parts.Length == 2)
+                    headers[parts[0].Trim()] = parts[1].Trim();
+            }
+
+            var config = new
+            {
+                targets = new
+                {
+                    urls = urls,
+                    authToken = _settings.AuthToken,
+                    cookies = new { session = _settings.SessionCookie }
+                },
+                scanProfiles = new
+                {
+                    light = new { maxDepth = _lightProfile.MaxDepth, maxPages = _lightProfile.MaxPages, timeoutSeconds = _lightProfile.TimeoutSeconds, threads = _lightProfile.Threads, fuzzParams = _lightProfile.FuzzParams, portRangeStart = _lightProfile.PortRangeStart, portRangeEnd = _lightProfile.PortRangeEnd },
+                    medium = new { maxDepth = _mediumProfile.MaxDepth, maxPages = _mediumProfile.MaxPages, timeoutSeconds = _mediumProfile.TimeoutSeconds, threads = _mediumProfile.Threads, fuzzParams = _mediumProfile.FuzzParams, portRangeStart = _mediumProfile.PortRangeStart, portRangeEnd = _mediumProfile.PortRangeEnd },
+                    deep = new { maxDepth = _deepProfile.MaxDepth, maxPages = _deepProfile.MaxPages, timeoutSeconds = _deepProfile.TimeoutSeconds, threads = _deepProfile.Threads, fuzzParams = _deepProfile.FuzzParams, portRangeStart = _deepProfile.PortRangeStart, portRangeEnd = _deepProfile.PortRangeEnd }
+                },
+                proxy = new
+                {
+                    enabled = _settings.ProxyEnabled,
+                    url = _settings.ProxyUrl,
+                    type = _settings.ProxyType,
+                    username = _settings.ProxyUsername,
+                    password = _settings.ProxyPassword
+                },
+                customHeaders = headers,
+                output = new
+                {
+                    directory = _settings.OutputDirectory,
+                    format = _settings.OutputFormat,
+                    includeRawResponse = _settings.IncludeRawResponse
+                },
+                notifications = new
+                {
+                    enabled = _settings.NotificationsEnabled,
+                    webhookUrl = _settings.WebhookUrl
+                }
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(config,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(configPath, json);
+
+            // Also update the active profile on the config manager
+            Config.ActiveProfile = _settings.ActiveProfile;
+
+            _statusMessage = "Settings saved successfully!";
+            _statusIsError = false;
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Error saving settings: {ex.Message}";
+            _statusIsError = true;
+        }
+    }
+
+    public void Dispose() { }
+
+    private class SettingsForm
+    {
+        public string ActiveProfile { get; set; } = "medium";
+        public string AuthToken { get; set; } = "";
+        public string SessionCookie { get; set; } = "";
+        public bool ProxyEnabled { get; set; }
+        public string ProxyUrl { get; set; } = "";
+        public string ProxyType { get; set; } = "HTTP";
+        public string ProxyUsername { get; set; } = "";
+        public string ProxyPassword { get; set; } = "";
+        public string OutputDirectory { get; set; } = "./reports";
+        public string OutputFormat { get; set; } = "both";
+        public bool IncludeRawResponse { get; set; }
+        public bool NotificationsEnabled { get; set; }
+        public string WebhookUrl { get; set; } = "";
+    }
+
+    private class ProfileForm
+    {
+        public int MaxDepth { get; set; } = 4;
+        public int MaxPages { get; set; } = 200;
+        public int TimeoutSeconds { get; set; } = 15;
+        public int Threads { get; set; } = 10;
+        public int FuzzParams { get; set; } = 100;
+        public int PortRangeStart { get; set; } = 1;
+        public int PortRangeEnd { get; set; } = 5000;
+    }
+}
