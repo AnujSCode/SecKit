@@ -10,6 +10,10 @@ using SecKit.Modules.ServerHardening;
 using SecKit.Modules.RedTeam;
 using SecKit.Modules.CloudAudit;
 using SecKit.Modules.Reporting;
+using SecKit.Modules.Secrets;
+using SecKit.Modules.Crypto;
+using SecKit.Modules.Defense;
+using SecKit.Modules.Network;
 
 using Spectre.Console;
 
@@ -87,7 +91,21 @@ public class Program
                             "11. Compliance Check (CIS, PCI-DSS, OWASP ASVS)",
                             "12. 💥 Full Suite (All of the above)",
                             "13. ⚙️  Settings",
-                            "14. ❌ Exit"
+                            "14. ❌ Exit (v2 modules)",
+                            "",
+                            "15. Secret Scanning (hardcoded secrets, API keys, credential leaks)",
+                            "16. Phishing Detection (SPF, DKIM, DMARC, typosquatting)",
+                            "17. Password Audit (strength, entropy, breach check)",
+                            "18. Crypto Audit (JWT attacks, hash cracking, certificate analysis)",
+                            "19. VirusTotal Scan (malware hash lookup, batch analysis)",
+                            "20. YARA Scan (webshell detection, malware patterns)",
+                            "21. Ransomware Canary (honeypot files, encryption detection)",
+                            "22. Hardware Enumeration (USB, PCI, network interfaces, cables)",
+                            "23. Forensics Collection (system snapshot for incident response)",
+                            "24. Active Directory Audit (Kerberoasting, delegation, policies)",
+                            "25. Enhanced Port Scan (banner grabbing, OS fingerprint, CVE lookup)",
+                            "26. Regenerate Reports (from existing JSON reports)",
+                            "27. ❌ Exit"
                         }));
 
                 switch (choice)
@@ -132,6 +150,46 @@ public class Program
                         ShowSettings();
                         break;
                     case string s when s.StartsWith("14"):
+                        AnsiConsole.MarkupLine("[grey]Tip: Press Enter to continue exploring v3 modules below...[/]");
+                        Console.ReadLine();
+                        break;
+                    case string s when s.StartsWith("15"):
+                        await RunSecretScanAsync();
+                        break;
+                    case string s when s.StartsWith("16"):
+                        await RunPhishingDetectionAsync();
+                        break;
+                    case string s when s.StartsWith("17"):
+                        await RunPasswordAuditAsync();
+                        break;
+                    case string s when s.StartsWith("18"):
+                        await RunCryptoAuditAsync();
+                        break;
+                    case string s when s.StartsWith("19"):
+                        await RunVirusTotalScanAsync();
+                        break;
+                    case string s when s.StartsWith("20"):
+                        await RunYaraScanAsync();
+                        break;
+                    case string s when s.StartsWith("21"):
+                        await RunRansomwareCanaryAsync();
+                        break;
+                    case string s when s.StartsWith("22"):
+                        await RunHardwareEnumAsync();
+                        break;
+                    case string s when s.StartsWith("23"):
+                        await RunForensicsCollectionAsync();
+                        break;
+                    case string s when s.StartsWith("24"):
+                        await RunAdAuditAsync();
+                        break;
+                    case string s when s.StartsWith("25"):
+                        await RunEnhancedPortScanAsync();
+                        break;
+                    case string s when s.StartsWith("26"):
+                        RunRegenerateReports();
+                        break;
+                    case string s when s.StartsWith("27"):
                         AnsiConsole.MarkupLine("[green]Goodbye![/]");
                         return 0;
                 }
@@ -184,9 +242,9 @@ public class Program
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(targetUrl) && scanType is not "rules" and not "compliance")
+            if (string.IsNullOrWhiteSpace(targetUrl) && scanType is not "rules" and not "compliance" and not "canary" and not "hardware" and not "forensics")
             {
-                Console.Error.WriteLine("Usage: seckit --scan <url> --type <full|vuln|network|ai|map|server|redteam|cloud|rules|compliance> [--output <path>] [--profile <light|medium|deep>] --i-am-authorized");
+                Console.Error.WriteLine("Usage: seckit --scan <url|path> --type <full|vuln|network|ai|map|server|redteam|cloud|secrets|phishing|password|crypto|virustotal|yara|canary|hardware|forensics|ad|enhanced-port|rules|compliance> [--output <path>] [--profile <light|medium|deep>] --i-am-authorized");
                 return 1;
             }
 
@@ -266,6 +324,105 @@ public class Program
                     await RunComplianceCheckFromLastScanAsync(report);
                     Logger.Info($"Compliance report generated to {outputPath}");
                     return 0;
+                case "secrets":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Secret scanning requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunSecretScanInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "phishing":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Phishing detection requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunPhishingDetectInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "password":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Password audit requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunPasswordAuditInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "crypto":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Crypto audit requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunCryptoAuditInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "virustotal":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("VirusTotal scan requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunVirusTotalScanInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "yara":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("YARA scan requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunYaraScanInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "canary":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Ransomware canary requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunCanaryInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "hardware":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Hardware enumeration requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunHardwareEnumInternalAsync(report);
+                    _lastScanReport = report;
+                    break;
+                case "forensics":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Forensics collection requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunForensicsCollectionInternalAsync(report);
+                    _lastScanReport = report;
+                    break;
+                case "ad":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("AD audit requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunAdAuditInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
+                case "enhanced-port":
+                    if (!authorized)
+                    {
+                        Console.Error.WriteLine("Enhanced port scan requires authorization (--i-am-authorized).");
+                        return 1;
+                    }
+                    await RunEnhancedPortScanInternalAsync(targetUrl, report);
+                    _lastScanReport = report;
+                    break;
                 default:
                     Console.Error.WriteLine($"Unknown scan type: {scanType}");
                     return 1;
@@ -742,6 +899,371 @@ public class Program
         AnsiConsole.MarkupLine($"[green]Cloud audit complete! {report.TotalVulnerabilities} findings.[/]");
     }
 
+    private static async Task RunSecretScanAsync()
+    {
+        var path = AnsiConsole.Ask<string>("Enter path (file or directory) to scan for secrets:", "./");
+
+        var scanner = new SecretScanner(_config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { path },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Scanning for hardcoded secrets...", async ctx =>
+            {
+                var result = await scanner.ScanAsync(path);
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Secret scan complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunPhishingDetectionAsync()
+    {
+        var domain = AnsiConsole.Ask<string>("Enter domain to check:", "example.com");
+
+        var detector = new PhishingDetector(_config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { domain },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Checking anti-phishing protections...", async ctx =>
+            {
+                var result = await detector.ScanAsync(domain);
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Phishing detection complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunPasswordAuditAsync()
+    {
+        var target = AnsiConsole.Ask<string>("Enter password, file path, or directory to audit:", "");
+
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            // Interactive password entry
+            target = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter password to audit:")
+                    .Secret());
+        }
+
+        var auditor = new PasswordAuditor(HttpClientFactory.CreateSimple(10), _config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { "password-audit" },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Auditing password strength...", async ctx =>
+            {
+                var result = await auditor.ScanAsync(target);
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Password audit complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunCryptoAuditAsync()
+    {
+        var url = AnsiConsole.Ask<string>("Enter target URL:", "https://example.com");
+
+        var auditor = new CryptoAuditor(HttpClientFactory.Create(_config), _config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { url },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Auditing crypto implementations...", async ctx =>
+            {
+                var result = await auditor.ScanAsync(url);
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Crypto audit complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunVirusTotalScanAsync()
+    {
+        var target = AnsiConsole.Ask<string>("Enter file path, directory, or SHA-256 hash to check:", "./");
+
+        var scanner = new VirusTotalScanner(HttpClientFactory.CreateSimple(10), _config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { target },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Querying VirusTotal...", async ctx =>
+            {
+                var result = await scanner.ScanAsync(target);
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]VirusTotal scan complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunYaraScanAsync()
+    {
+        var path = AnsiConsole.Ask<string>("Enter file or directory path to scan:", "./");
+
+        var scanner = new YaraScanner(_config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { path },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Running YARA pattern scan...", async ctx =>
+            {
+                var result = await scanner.ScanAsync(path);
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]YARA scan complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunRansomwareCanaryAsync()
+    {
+        AnsiConsole.Write(new Panel(
+            "[yellow]Ransomware Canary deploys honeypot files to detect unauthorized modification or encryption.[/]\n" +
+            "Choose to deploy new canaries or verify existing ones.")
+            .Header("[darkorange] RANSOMWARE CANARY [/]")
+            .BorderColor(Color.DarkOrange));
+
+        var action = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Select action:")
+                .AddChoices(new[] { "Deploy canaries to temp directory", "Deploy canaries to custom directory", "Verify existing canaries" }));
+
+        var canary = new RansomwareCanary();
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        string? customPath = null;
+        if (action.Contains("custom"))
+        {
+            customPath = AnsiConsole.Ask<string>("Enter directory to deploy canaries:", "/tmp/seckit-canaries");
+        }
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Managing ransomware canaries...", async ctx =>
+            {
+                var result = await canary.ScanAsync(customPath ?? string.Empty);
+                report.TargetUrls = new List<string> { result.TargetUrl };
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Ransomware canary check complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunHardwareEnumAsync()
+    {
+        AnsiConsole.Write(new Panel(
+            "[yellow]Hardware enumeration scans local hardware: USB devices, PCI devices,\nn" +
+            "network interfaces, disk drives, and cable status.[/]")
+            .Header("[steelblue] HARDWARE ENUMERATION [/]")
+            .BorderColor(Color.SteelBlue));
+
+        if (!AnsiConsole.Confirm("[yellow]Run hardware enumeration on this system?[/]", false))
+        {
+            AnsiConsole.MarkupLine("[grey]Aborted.[/]");
+            return;
+        }
+
+        var enumerator = new HardwareEnumerator();
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Enumerating hardware...", async ctx =>
+            {
+                var result = await enumerator.ScanAsync(Environment.MachineName);
+                report.TargetUrls = new List<string> { result.TargetUrl };
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Hardware enumeration complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunForensicsCollectionAsync()
+    {
+        AnsiConsole.Write(new Panel(
+            "[yellow]Forensics collection gathers system snapshots for incident response:\nn" +
+            "processes, network connections, users, startup items, browser artifacts.[/]")
+            .Header("[blue] FORENSICS COLLECTION [/]")
+            .BorderColor(Color.Blue));
+
+        if (!AnsiConsole.Confirm("[yellow]Collect forensic evidence from this system?[/]", false))
+        {
+            AnsiConsole.MarkupLine("[grey]Aborted.[/]");
+            return;
+        }
+
+        var collector = new ForensicsCollector();
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Collecting forensic evidence...", async ctx =>
+            {
+                var result = await collector.ScanAsync(Environment.MachineName);
+                report.TargetUrls = new List<string> { result.TargetUrl };
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]Forensics collection complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunAdAuditAsync()
+    {
+        AnsiConsole.Write(new Panel(
+            "[yellow]Active Directory audit checks Kerberoasting, delegation, password policies,\nn" +
+            "privileged groups, domain controller security, and NTLM usage.[/]")
+            .Header("[purple] ACTIVE DIRECTORY AUDIT [/]")
+            .BorderColor(Color.Purple));
+
+        if (!AnsiConsole.Confirm("[yellow]Run Active Directory audit? Only works on domain-joined Windows systems. Continue?[/]", false))
+        {
+            AnsiConsole.MarkupLine("[grey]Aborted.[/]");
+            return;
+        }
+
+        var domain = AnsiConsole.Ask<string>("Enter domain name (leave blank for current domain):", "");
+        if (string.IsNullOrWhiteSpace(domain)) domain = null!;
+
+        var auditor = new AdAuditor(_config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Auditing Active Directory...", async ctx =>
+            {
+                var result = domain != null ? await auditor.ScanAsync(domain) : await auditor.ScanAsync();
+                report.TargetUrls = new List<string> { result.TargetUrl };
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        AnsiConsole.MarkupLine($"[green]AD audit complete! {report.TotalVulnerabilities} findings.[/]");
+    }
+
+    private static async Task RunEnhancedPortScanAsync()
+    {
+        var target = AnsiConsole.Ask<string>("Enter target host (IP or hostname):", "localhost");
+
+        var scanner = new EnhancedPortScanner(HttpClientFactory.CreateSimple(10), _config);
+        var report = new SecurityReport
+        {
+            ScanProfile = _config.ActiveProfile,
+            TargetUrls = new List<string> { target },
+            ScanStartTime = DateTime.UtcNow
+        };
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Running enhanced port scan...", async ctx =>
+            {
+                var result = await scanner.ScanAsync(target);
+                report.ModuleResults.Add(result);
+                report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+            });
+
+        report.ScanEndTime = DateTime.UtcNow;
+        _lastScanReport = report;
+        await ReportGenerator.GenerateAsync(report, _config.OutputDirectory, _config.OutputFormat);
+
+        var openPorts = report.AllVulnerabilities.Count(v => v.Type == "Open Port");
+        AnsiConsole.MarkupLine($"[green]Enhanced port scan complete! {openPorts} open ports found. {report.TotalVulnerabilities} total findings.[/]");
+    }
+
     private static async Task RunWafIdsGenerationAsync()
     {
         if (_lastScanReport == null || _lastScanReport.AllVulnerabilities.Count == 0)
@@ -1099,6 +1621,144 @@ public class Program
         report.AllVulnerabilities.AddRange(result.Vulnerabilities);
     }
 
+    // --- v3 New Module Internal Methods ---
+
+    private static async Task RunSecretScanInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Secret Scanner...", ConsoleColor.Cyan);
+
+        var scanner = new SecretScanner(_config);
+        var result = await scanner.ScanAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunPhishingDetectInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Phishing Detection...", ConsoleColor.Cyan);
+
+        var detector = new PhishingDetector(_config);
+        var result = await detector.ScanAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunPasswordAuditInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Password Audit...", ConsoleColor.Cyan);
+
+        var auditor = new PasswordAuditor(HttpClientFactory.CreateSimple(10), _config);
+        var result = await auditor.ScanAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunCryptoAuditInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Crypto Audit...", ConsoleColor.Cyan);
+
+        var auditor = new CryptoAuditor(HttpClientFactory.Create(_config), _config);
+        var result = await auditor.ScanAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunVirusTotalScanInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running VirusTotal Scan...", ConsoleColor.Cyan);
+
+        var scanner = new VirusTotalScanner(HttpClientFactory.CreateSimple(10), _config);
+        var result = await scanner.ScanAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunYaraScanInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running YARA Scan...", ConsoleColor.Cyan);
+
+        var scanner = new YaraScanner(_config);
+        var result = await scanner.ScanAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunCanaryInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Ransomware Canary...", ConsoleColor.Cyan);
+
+        var canary = new RansomwareCanary();
+        var result = await canary.ScanAsync(string.IsNullOrWhiteSpace(target) ? target : target);
+        report.TargetUrls.Add(result.TargetUrl);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunHardwareEnumInternalAsync(SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Hardware Enumeration...", ConsoleColor.Cyan);
+
+        var enumerator = new HardwareEnumerator();
+        var result = await enumerator.ScanAsync(Environment.MachineName);
+        report.TargetUrls.Add(result.TargetUrl);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunForensicsCollectionInternalAsync(SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Forensics Collection...", ConsoleColor.Cyan);
+
+        var collector = new ForensicsCollector();
+        var result = await collector.ScanAsync(Environment.MachineName);
+        report.TargetUrls.Add(result.TargetUrl);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunAdAuditInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Active Directory Audit...", ConsoleColor.Cyan);
+
+        var auditor = new AdAuditor(_config);
+        var result = string.IsNullOrWhiteSpace(target) ? await auditor.ScanAsync() : await auditor.ScanAsync(target);
+        report.TargetUrls.Add(result.TargetUrl);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
+    private static async Task RunEnhancedPortScanInternalAsync(string target, SecurityReport report)
+    {
+        Logger.WriteLine($"\n{new string('═', 50)}", ConsoleColor.DarkGray);
+        Logger.WriteLine("  Running Enhanced Port Scan...", ConsoleColor.Cyan);
+
+        var scanner = new EnhancedPortScanner(HttpClientFactory.CreateSimple(10), _config);
+        var result = await scanner.ScanAsync(target);
+        ReportGenerator.PrintConsoleSummary(result);
+        report.ModuleResults.Add(result);
+        report.AllVulnerabilities.AddRange(result.Vulnerabilities);
+    }
+
     private static async Task<SecurityReport> RunFullSuiteInternalWithProgressAsync(string url)
     {
         var report = new SecurityReport
@@ -1126,6 +1786,14 @@ public class Program
                 var serverTask = ctx.AddTask("[darkorange]Server Hardening[/]");
                 var redTask = ctx.AddTask("[red]Red Team[/]");
                 var cloudTask = ctx.AddTask("[blue]Cloud Audit[/]");
+                var secretTask = ctx.AddTask("[yellow]Secret Scan[/]");
+                var cryptoTask = ctx.AddTask("[cyan]Crypto Audit[/]");
+                var yaraTask = ctx.AddTask("[red]YARA Scan[/]");
+                var canaryTask = ctx.AddTask("[darkorange]Ransomware Canary[/]");
+                var hwTask = ctx.AddTask("[steelblue]Hardware Enum[/]");
+                var forensicTask = ctx.AddTask("[blue]Forensics[/]");
+                var adTask = ctx.AddTask("[purple]AD Audit[/]");
+                var portTask = ctx.AddTask("[green]Enhanced Port Scan[/]");
 
                 // Run vulnerability scan
                 await RunVulnScanInternalAsync(url, report);
@@ -1154,6 +1822,46 @@ public class Program
                 // Run cloud audit
                 await RunCloudAuditInternalAsync(url, report);
                 cloudTask.Value = 100;
+
+                // v3: Secret scan
+                await RunSecretScanInternalAsync(url, report);
+                secretTask.Value = 100;
+
+                // v3: Crypto audit
+                await RunCryptoAuditInternalAsync(url, report);
+                cryptoTask.Value = 100;
+
+                // v3: YARA scan (scan the codebase directory)
+                try
+                {
+                    await RunYaraScanInternalAsync(Directory.GetCurrentDirectory(), report);
+                }
+                catch { /* YARA scan may fail on non-filesystem targets */ }
+                yaraTask.Value = 100;
+
+                // v3: Ransomware canary
+                await RunCanaryInternalAsync("", report);
+                canaryTask.Value = 100;
+
+                // v3: Hardware enumeration
+                await RunHardwareEnumInternalAsync(report);
+                hwTask.Value = 100;
+
+                // v3: Forensics
+                await RunForensicsCollectionInternalAsync(report);
+                forensicTask.Value = 100;
+
+                // v3: AD audit
+                try
+                {
+                    await RunAdAuditInternalAsync("", report);
+                }
+                catch { /* AD audit requires domain-joined Windows */ }
+                adTask.Value = 100;
+
+                // v3: Enhanced port scan
+                await RunEnhancedPortScanInternalAsync(url, report);
+                portTask.Value = 100;
             });
 
         report.ScanEndTime = DateTime.UtcNow;
@@ -1177,6 +1885,13 @@ public class Program
     }
 
     #endregion
+
+    private static void RunRegenerateReports()
+    {
+        var dir = AnsiConsole.Ask<string>("Enter directory containing JSON report files:", _config.OutputDirectory);
+        var count = ReportGenerator.Regenerate(dir);
+        AnsiConsole.MarkupLine($"[green]Regenerated {count} HTML reports.[/]");
+    }
 
     #region Settings
 

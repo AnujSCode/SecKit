@@ -18,25 +18,14 @@ public class JwtAnalyzer
     private readonly HttpClient _client;
     private readonly ConfigManager _config;
 
-    // Common weak HMAC secrets used in real-world JWT signing
-    private static readonly string[] WeakSecrets =
-    {
-        "secret", "password", "changeme", "admin", "key", "1234567890",
-        "secret123", "jwt_secret", "my_secret", "test", "testing",
-        "secretkey", "privatekey", "supersecret", "passw0rd", "p@ssword",
-        "qwerty123", "letmein", "monkey", "football", "iloveyou",
-        "master", "welcome", "abc123", "12345678", "qwerty",
-        "1q2w3e4r", "default", "jwtsecret", "jwt-secret", "jwt_key",
-        "application_secret", "app_secret", "auth_secret", "token_secret",
-        "signing_key", "signingkey"
-    };
-
+    private readonly string[] _weakSecrets;
     private static readonly string[] RequiredClaims = { "sub", "iat", "exp" };
 
     public JwtAnalyzer(HttpClient client, ConfigManager config)
     {
         _client = client;
         _config = config;
+        _weakSecrets = config.JwtWeakSecrets.ToArray();
     }
 
     /// <summary>Scans the target for JWT tokens and tests them for vulnerabilities.</summary>
@@ -218,7 +207,7 @@ public class JwtAnalyzer
         var alg = decoded.Header.Alg ?? "";
         if (!alg.StartsWith("HS", StringComparison.OrdinalIgnoreCase)) return;
 
-        foreach (var secret in WeakSecrets.Take(50)) // Limit iterations
+        foreach (var secret in _weakSecrets.Take(50)) // Limit iterations
         {
             try
             {

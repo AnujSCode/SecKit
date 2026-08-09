@@ -14,28 +14,15 @@ public class CorsScanner
     private readonly HttpClient _client;
     private readonly ConfigManager _config;
 
-    // Test origins to probe with
-    private static readonly (string Origin, string Label)[] TestOrigins =
-    {
-        ("null", "Null origin"),
-        ("https://evil.example.com", "Random origin"),
-        ("https://attacker.com", "Attacker origin"),
-        ("http://localhost", "Localhost origin"),
-        ("http://127.0.0.1", "Loopback IP origin"),
-        ("https://evil.com", "Malicious origin"),
-    };
-
-    // Sensitive headers to check for in ACAH (Access-Control-Allow-Headers)
-    private static readonly string[] SensitiveAllowHeaders =
-    {
-        "Authorization", "X-Auth-Token", "Cookie", "X-CSRF-Token",
-        "X-API-Key", "X-Requested-With", "X-HTTP-Method-Override"
-    };
+    private readonly (string Origin, string Label)[] _testOrigins;
+    private readonly string[] _sensitiveAllowHeaders;
 
     public CorsScanner(HttpClient client, ConfigManager config)
     {
         _client = client;
         _config = config;
+        _testOrigins = config.CorsTestOrigins.Select(c => (c.Origin, c.Label)).ToArray();
+        _sensitiveAllowHeaders = config.CorsSensitiveHeaders.ToArray();
     }
 
     /// <summary>Scans a target URL for CORS misconfigurations.</summary>
@@ -51,7 +38,7 @@ public class CorsScanner
         try
         {
             // Phase 1: Test with standard origins
-            foreach (var (origin, label) in TestOrigins)
+            foreach (var (origin, label) in _testOrigins)
             {
                 result.RequestsSent++;
                 await TestOriginAsync(result, target, origin, label);
@@ -284,7 +271,7 @@ public class CorsScanner
                 if (response.Headers.TryGetValues("Access-Control-Allow-Headers", out var headers))
                 {
                     var allowedHeaders = string.Join(", ", headers);
-                    foreach (var sensitive in SensitiveAllowHeaders)
+                    foreach (var sensitive in _sensitiveAllowHeaders)
                     {
                         if (allowedHeaders.Contains(sensitive, StringComparison.OrdinalIgnoreCase))
                         {

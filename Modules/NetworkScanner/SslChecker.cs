@@ -1,3 +1,4 @@
+#pragma warning disable CS0618, SYSLIB0039
 using System.Net;
 using System.Net.Security;
 using System.Security.Authentication;

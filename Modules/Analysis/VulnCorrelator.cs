@@ -1,3 +1,4 @@
+#pragma warning disable CS1998
 using System.Text;
 using SecKit.Core;
 using SecKit.Models;

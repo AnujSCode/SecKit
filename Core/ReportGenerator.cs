@@ -15,6 +15,52 @@ public static class ReportGenerator
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    /// <summary>
+    /// Regenerates HTML reports from existing JSON report files in a directory.
+    /// Useful after changing report templates or configuration without re-scanning.
+    /// </summary>
+    /// <param name="reportDir">Directory containing SecKit JSON report files.</param>
+    /// <returns>Number of reports regenerated.</returns>
+    public static int Regenerate(string reportDir)
+    {
+        if (!Directory.Exists(reportDir))
+        {
+            Logger.Error($"Report directory not found: {reportDir}");
+            return 0;
+        }
+
+        var jsonFiles = Directory.GetFiles(reportDir, "SecKit-Report-*.json");
+        if (jsonFiles.Length == 0)
+        {
+            Logger.Warning($"No SecKit JSON report files found in {reportDir}");
+            return 0;
+        }
+
+        var regenerated = 0;
+        foreach (var jsonFile in jsonFiles)
+        {
+            try
+            {
+                var json = File.ReadAllText(jsonFile);
+                var report = System.Text.Json.JsonSerializer.Deserialize<SecurityReport>(json, JsonOptions);
+                if (report == null) continue;
+
+                var htmlPath = Path.ChangeExtension(jsonFile, ".html");
+                var html = GenerateHtml(report);
+                File.WriteAllText(htmlPath, html);
+                regenerated++;
+                Logger.Info($"Regenerated: {htmlPath}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to regenerate {jsonFile}: {ex.Message}");
+            }
+        }
+
+        Logger.Info($"Regenerated {regenerated} HTML reports from {jsonFiles.Length} JSON files.");
+        return regenerated;
+    }
+
     /// <summary>Generates both HTML and JSON reports and saves to the output directory.</summary>
     public static async Task GenerateAsync(SecurityReport report, string outputDir, string format = "both")
     {
